@@ -4,15 +4,26 @@ from PIL import Image, ImageDraw, ImageFont
 import os, platform, json, tempfile, io
 from typing import List, Dict, Tuple, Any
 
-st.set_page_config(page_title="Label Renderer", layout="wide")
+st.set_page_config(page_title="Label Generator", layout="wide")
+
+# ---- BUNDLED FONTS ----
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FONTS_DIR = os.path.join(BASE_DIR, "fonts")
+
+BUNDLED_FONTS = {
+    "NotoSansDevanagari-Regular.ttf": os.path.join(FONTS_DIR, "NotoSansDevanagari-Regular.ttf"),
+    "Mukta-Regular.ttf": os.path.join(FONTS_DIR, "Mukta-Regular.ttf"),
+    "NotoSansBengali-Regular.ttf": os.path.join(FONTS_DIR, "NotoSansBengali-Regular.ttf"),
+    "DejaVuSans.ttf": os.path.join(FONTS_DIR, "DejaVuSans.ttf"),
+}
 
 # ---------------------------
-# CONFIG: template json path
+# CONFIG
 # ---------------------------
 TEMPLATE_JSON_PATH = "./template_clean.json"
 
 # ---------------------------
-# BUILT-IN SAMPLE MASTER LABELS
+# SAMPLE MASTER LABELS
 # ---------------------------
 SAMPLE_IMAGES = {
     "Master Label Johnny Walker": "Master Label Johnny Walker.png",
@@ -20,7 +31,7 @@ SAMPLE_IMAGES = {
 }
 
 # ---------------------------
-# Demo rules
+# RULES
 # ---------------------------
 RULES: Dict[str, Dict[str, str]] = {
     "Uttar Pradesh": {
@@ -48,7 +59,7 @@ RULES: Dict[str, Dict[str, str]] = {
 }
 
 # ---------------------------
-# ===== RENDER ENGINE (UNCHANGED) =====
+# FONT DETECT
 # ---------------------------
 def has_devanagari(text: str) -> bool:
     return any('\u0900' <= ch <= '\u097F' for ch in text)
@@ -56,42 +67,64 @@ def has_devanagari(text: str) -> bool:
 def has_bengali(text: str) -> bool:
     return any('\u0980' <= ch <= '\u09FF' for ch in text)
 
+# ---------------------------
+# FONT CANDIDATES
+# ---------------------------
 def candidate_fonts_for_script(script: str) -> List[str]:
-    system = platform.system()
-    cands = []
+
+    # ⭐ FIRST PRIORITY = bundled fonts
     if script == "devanagari":
-        cands = [
-            "NotoSansDevanagari-Regular.ttf","Lohit-Devanagari.ttf","Mukta-Regular.ttf",
-            "Devanagari Sangam MN.ttf","Mangal.ttf","Arial Unicode.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
-            "/Library/Fonts/Devanagari Sangam MN.ttf",
-            "/System/Library/Fonts/Supplemental/Devanagari Sangam MN.ttf","DejaVuSans.ttf"
+        return [
+            BUNDLED_FONTS["NotoSansDevanagari-Regular.ttf"],
+            BUNDLED_FONTS["Mukta-Regular.ttf"],
+            "NotoSansDevanagari-Regular.ttf",
+            "Mukta-Regular.ttf",
+            "Mangal.ttf",
+            "DejaVuSans.ttf"
         ]
+
     elif script == "bengali":
-        cands = [
-            "NotoSansBengali-Regular.ttf","Lohit-Bengali.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSansBengali-Regular.ttf","DejaVuSans.ttf"
+        return [
+            BUNDLED_FONTS["NotoSansBengali-Regular.ttf"],
+            "NotoSansBengali-Regular.ttf",
+            "DejaVuSans.ttf"
         ]
+
     else:
-        cands = ["DejaVuSans.ttf","Arial.ttf","/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+        return [
+            BUNDLED_FONTS["DejaVuSans.ttf"],
+            "DejaVuSans.ttf",
+            "Arial.ttf"
+        ]
 
-    if system == "Darwin":
-        cands += ["/System/Library/Fonts/Supplemental/Arial Unicode.ttf"]
-    elif system == "Windows":
-        cands += ["C:/Windows/Fonts/arialuni.ttf","C:/Windows/Fonts/Mangal.ttf"]
-    else:
-        cands += ["/usr/share/fonts/truetype/freefont/FreeSans.ttf"]
-
-    return list(dict.fromkeys(cands))
-
+# ---------------------------
+# FONT LOADER (FIXED)
+# ---------------------------
 def try_load_font(candidate: str, size: int):
+
+    # 1. direct path
     try:
         if os.path.exists(candidate):
             return ImageFont.truetype(candidate, size)
-    except: pass
+    except:
+        pass
+
+    # 2. bundled font lookup
+    try:
+        fname = os.path.basename(candidate)
+        if fname in BUNDLED_FONTS:
+            path = BUNDLED_FONTS[fname]
+            if os.path.exists(path):
+                return ImageFont.truetype(path, size)
+    except:
+        pass
+
+    # 3. system font fallback
     try:
         return ImageFont.truetype(candidate, size)
-    except: pass
+    except:
+        pass
+
     return None
 
 def font_supports_text(font, text):
@@ -103,7 +136,11 @@ def font_supports_text(font, text):
     except:
         return False
 
+# ---------------------------
+# BEST FONT FIT
+# ---------------------------
 def find_best_font_for_box(draw, text, box_w, box_h, max_size=400, min_size=6):
+
     if has_devanagari(text):
         candidates = candidate_fonts_for_script("devanagari")
     elif has_bengali(text):
@@ -112,6 +149,7 @@ def find_best_font_for_box(draw, text, box_w, box_h, max_size=400, min_size=6):
         candidates = candidate_fonts_for_script("latin")
 
     best_font=None; best_score=-1
+
     for cand in candidates:
         test = try_load_font(cand,40)
         if not test or not font_supports_text(test,text): continue
@@ -131,6 +169,7 @@ def find_best_font_for_box(draw, text, box_w, box_h, max_size=400, min_size=6):
         if not f: continue
         b=draw.textbbox((0,0),text,font=f)
         score=min((b[2]-b[0])/box_w,(b[3]-b[1])/box_h)
+
         if score>best_score:
             best_score=score; best_font=f
         if best_score>0.98: break
@@ -139,12 +178,16 @@ def find_best_font_for_box(draw, text, box_w, box_h, max_size=400, min_size=6):
         return ImageFont.load_default()
     return best_font
 
+# ---------------------------
+# UTIL
+# ---------------------------
 def percent_to_pixels(bbox_pct, image_size):
     W,H=image_size
     x,y,w,h=bbox_pct
     return int(x/100*W),int(y/100*H),int(w/100*W),int(h/100*H)
 
 def render_label(master_img_path, template_entry, state_name, rules, output_path, debug=True):
+
     img=Image.open(master_img_path).convert("RGBA")
     W,H=img.size
     draw=ImageDraw.Draw(img)
@@ -154,7 +197,10 @@ def render_label(master_img_path, template_entry, state_name, rules, output_path
         if label not in rules[state_name]: continue
         text=rules[state_name][label]
 
-        left,top,w,h=percent_to_pixels((region["x"],region["y"],region["width"],region["height"]),(W,H))
+        left,top,w,h=percent_to_pixels(
+            (region["x"],region["y"],region["width"],region["height"]),
+            (W,H)
+        )
         w=max(1,w); h=max(1,h)
 
         font=find_best_font_for_box(draw,text,w,h)
@@ -189,8 +235,6 @@ col_inputs, col_result = st.columns([1,1])
 with col_inputs:
     st.markdown("<h2 style='text-align: center'>Inputs</h2>", unsafe_allow_html=True)
 
-
-    # SAMPLE OPTION
     sample_choice = st.selectbox(
         "Use sample master label (optional)",
         ["None"] + list(SAMPLE_IMAGES.keys())
@@ -211,11 +255,10 @@ with col_result:
 
 if generate_btn:
 
-    # decide master image
     if sample_choice!="None":
         master_path = SAMPLE_IMAGES[sample_choice]
         if not os.path.exists(master_path):
-            st.error("Sample image not found in app folder")
+            st.error("Sample image not found")
             st.stop()
 
     elif uploaded_img:
