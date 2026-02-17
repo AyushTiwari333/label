@@ -16,7 +16,7 @@ TEMPLATE_JSON_PATH = "./template_clean.json"
 # ---------------------------
 SAMPLE_IMAGES = {
     "Master Label Johnny Walker": "Master Label Johnny Walker.png",
-    "Master Label Johnny VAT": "Master Label Johnny VAT.png"
+    "Master Label VAT": "Master Label VAT.png"
 }
 
 # ---------------------------
