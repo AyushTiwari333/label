@@ -1,0 +1,101 @@
+[
+  {
+    "image": "Johnny Walker v1",
+    "image_width": 341,
+    "image_height": 512,
+    "regions": [
+      {"label": "V_STATE_RESTRICTION_EN","x": 21.2074,"y": 54.2298,"width": 44.1177,"height": 2.4744},
+      {"label": "V_STATE_RESTRICTION_REG","x": 30.4954,"y": 57.0134,"width": 27.2446,"height": 2.1651},
+      {"label": "V_AGE_RESTR_EN","x": 21.0526,"y": 62.2714,"width": 47.8328,"height": 1.9589},
+      {"label": "V_StateLicense","x": 21.2074,"y": 66.7047,"width": 41.9505,"height": 1.8558},
+      {"label": "NOT_SOLD_IN","x": 21.2223,"y": 64.4265,"width": 29.9416,"height": 1.9722},
+      {"label": "IMPORT_LISC","x": 55.0199,"y": 34.7560,"width": 14.1604,"height": 1.8751},
+      {"label": "V_HEALTH_WARN_EN","x": 23.0650,"y": 77.7362,"width": 59.2879,"height": 4.2270},
+      {"label": "V_HEALTH_WARN_REG","x": 31.8886,"y": 82.8911,"width": 42.4149,"height": 2.5775},
+      {"label": "Lisc_no","x": 55.3223,"y": 38.5743,"width": 13.9445,"height": 1.7751}
+    ]
+  },
+
+  {
+    "image": "Johnny Walker v2 (position switch)",
+    "image_width": 848,
+    "image_height": 1264,
+    "regions": [
+      {"label": "V_STATE_RESTRICTION_EN","x": 21.5457,"y": 56.9247,"width": 47.3116,"height": 2.6078},
+      {"label": "V_STATE_RESTRICTION_REG","x": 30.3194,"y": 54.2423,"width": 27.6540,"height": 2.4588},
+      {"label": "V_AGE_RESTR_EN","x": 21.3236,"y": 62.5873,"width": 47.5338,"height": 1.7137},
+      {"label": "NOT_SOLD_IN","x": 21.2125,"y": 64.5991,"width": 29.9862,"height": 1.7882},
+      {"label": "V_StateLicense","x": 21.3236,"y": 66.9088,"width": 41.6476,"height": 1.7882},
+      {"label": "IMPORT_LISC","x": 55.1395,"y": 34.6696,"width": 14.2337,"height": 1.8066},
+      {"label": "Lisc_no","x": 55.1395,"y": 38.2828,"width": 14.2337,"height": 2.0647},
+      {"label": "V_HEALTH_WARN_EN","x": 23.5946,"y": 78.1141,"width": 58.6018,"height": 4.1294},
+      {"label": "V_HEALTH_WARN_REG","x": 27.6980,"y": 83.1037,"width": 52.0620,"height": 3.0110}
+    ]
+  },
+  {
+    "image": "Johnny Walker v3 (position switch)",
+    "image_width": 341,
+    "image_height": 512,
+    "regions": [
+      {"label": "V_STATE_RESTRICTION_EN","x": 21.2074,"y": 62.2714,"width": 44.1177,"height": 2.4744},
+      {"label": "V_STATE_RESTRICTION_REG","x": 30.4954,"y": 64.4265,"width": 27.2446,"height": 2.1651},
+      {"label": "V_AGE_RESTR_EN","x": 21.0526,"y": 54.2298,"width": 47.8328,"height": 1.9589},
+      {"label": "V_StateLicense","x": 21.2074,"y": 66.7047,"width": 41.9505,"height": 1.8558},
+      {"label": "NOT_SOLD_IN","x": 21.2223,"y": 57.0134,"width": 29.9416,"height": 1.9722},
+      {"label": "IMPORT_LISC","x": 55.0199,"y": 34.7560,"width": 14.1604,"height": 1.8751},
+      {"label": "V_HEALTH_WARN_EN","x": 23.0650,"y": 77.7362,"width": 59.2879,"height": 4.2270},
+      {"label": "V_HEALTH_WARN_REG","x": 31.8886,"y": 82.8911,"width": 42.4149,"height": 2.5775},
+      {"label": "Lisc_no","x": 55.3223,"y": 38.5743,"width": 13.9445,"height": 1.7751}
+    ]
+  },
+  {
+  "image": "VAT 69",
+  "image_width": 832,
+  "image_height": 1248,
+  "regions": [
+    {
+      "label": "V_STATE_RESTRICTION_EN",
+      "x": 26.7372,
+      "y": 40.3046,
+      "width": 46.1516,
+      "height": 1.7030
+    },
+    {
+      "label": "V_STATE_RESTRICTION_REG",
+      "x": 34.6704,
+      "y": 42.1772,
+      "width": 25.9568,
+      "height": 1.6364
+    },
+    {
+      "label": "V_AGE_RESTR_EN",
+      "x": 27.0039,
+      "y": 47.2041,
+      "width": 45.1570,
+      "height": 1.0236
+    },
+    {
+      "label": "NOT_SOLD_IN",
+      "x": 27.0039,
+      "y": 48.5890,
+      "width": 25.6492,
+      "height": 1.2042
+    },
+    {
+      "label": "V_StateLicense",
+      "x": 27.0942,
+      "y": 50.2748,
+      "width": 30.1649,
+      "height": 1.0236
+    },
+    {
+      "label": "V_HEALTH_WARN_REG",
+      "x": 28.1780,
+      "y": 75.6230,
+      "width": 36.7578,
+      "height": 1.5654
+    }
+  ]
+}
+
+]
