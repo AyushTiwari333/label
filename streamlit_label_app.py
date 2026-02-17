@@ -187,7 +187,8 @@ templates=json.load(open(TEMPLATE_JSON_PATH,"r",encoding="utf-8"))
 col_inputs, col_result = st.columns([1,1])
 
 with col_inputs:
-    st.subheader("Inputs")
+    st.markdown("<h2 style='text-align: center'>Inputs</h2>", unsafe_allow_html=True)
+
 
     # SAMPLE OPTION
     sample_choice = st.selectbox(
@@ -206,7 +207,7 @@ with col_inputs:
     generate_btn=st.button("Generate")
 
 with col_result:
-    st.subheader("Result")
+    st.markdown("<h2 style='text-align: center'>Results</h2>", unsafe_allow_html=True)
 
 if generate_btn:
 
