@@ -12,6 +12,15 @@ st.set_page_config(page_title="Label Renderer", layout="wide")
 TEMPLATE_JSON_PATH = "./template_clean.json"   # <-- put your cleaned JSON here (local)
 
 # ---------------------------
+# If you want built-in sample master images, place them next to this script
+# and update SAMPLE_MAP if you used different filenames/locations.
+# ---------------------------
+SAMPLE_MAP = {
+    "Master Label Sample": "Master Label Sample.png",
+    "Master Label VAT": "Master Label VAT.png"
+}
+
+# ---------------------------
 # Demo rules (your mapping)
 # ---------------------------
 RULES: Dict[str, Dict[str, str]] = {
@@ -231,7 +240,25 @@ col_inputs, col_result = st.columns([1,1])
 
 with col_inputs:
     st.subheader("Inputs")
-    uploaded_img = st.file_uploader("Upload master label image (PNG/JPG)", type=["png","jpg","jpeg"])
+
+    # --- New: sample selector ---
+    st.markdown("**Choose master label** — either upload or pick a sample")
+    sample_options = ["(none)"] + list(SAMPLE_MAP.keys())
+    sample_choice = st.selectbox("Pick a built-in sample (optional)", options=sample_options, index=0)
+
+    uploaded_img = st.file_uploader("Or upload master label image (PNG/JPG)", type=["png","jpg","jpeg"])
+
+    # if sample chosen, verify file exists
+    selected_sample_path = None
+    if sample_choice != "(none)":
+        sample_path = SAMPLE_MAP.get(sample_choice)
+        if sample_path and os.path.exists(sample_path):
+            selected_sample_path = sample_path
+            st.caption(f"Using sample: `{sample_path}`")
+        else:
+            st.warning(f"Sample file for '{sample_choice}' not found at `{sample_path}`. Please place the file next to this script or upload an image.")
+            selected_sample_path = None
+
     template_names = [os.path.basename(t.get("image","unnamed")) for t in templates]
     sel_name = st.selectbox("Select template entry (image basename)", options=template_names)
     sel_idx = template_names.index(sel_name)
@@ -245,34 +272,39 @@ with col_result:
     placeholder = st.empty()  # will be replaced with before/after after generation
 
 if generate_btn:
-    if uploaded_img is None:
-        st.error("Please upload a master image first.")
+    # Decide master image source: sample (preferred) or uploaded
+    if selected_sample_path:
+        master_path = selected_sample_path
     else:
-        try:
-            tmp_master = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_img.name)[1])
-            tmp_master.write(uploaded_img.getvalue())
-            tmp_master.flush(); tmp_master.close()
-            master_path = tmp_master.name
+        if uploaded_img is None:
+            st.error("Please upload a master image or choose a built-in sample first.")
+            st.stop()
+        # write uploaded file to temp
+        tmp_master = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_img.name)[1])
+        tmp_master.write(uploaded_img.getvalue())
+        tmp_master.flush(); tmp_master.close()
+        master_path = tmp_master.name
 
-            tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-            tmp_out.close()
-            out_path = tmp_out.name
+    try:
+        tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        tmp_out.close()
+        out_path = tmp_out.name
 
-            render_label(master_path, template_entry, state_choice, RULES, out_path, debug=debug)
+        render_label(master_path, template_entry, state_choice, RULES, out_path, debug=debug)
 
-            with open(master_path, "rb") as fm:
-                master_bytes = fm.read()
-            with open(out_path, "rb") as fo:
-                final_bytes = fo.read()
+        with open(master_path, "rb") as fm:
+            master_bytes = fm.read()
+        with open(out_path, "rb") as fo:
+            final_bytes = fo.read()
 
-            # show side-by-side before/after and download
-            c1, c2 = col_result.columns(2)
-            with c1:
-                st.image(Image.open(io.BytesIO(master_bytes)), caption="Master (before)", width=350)
-            with c2:
-                st.image(Image.open(io.BytesIO(final_bytes)), caption="Final (after)", width=350)
-                st.download_button("Download final PNG", data=final_bytes, file_name="final_label.png", mime="image/png")
+        # show side-by-side before/after and download (fixed width to avoid deprecation)
+        c1, c2 = col_result.columns(2)
+        with c1:
+            st.image(Image.open(io.BytesIO(master_bytes)), caption="Master (before)", width=350)
+        with c2:
+            st.image(Image.open(io.BytesIO(final_bytes)), caption="Final (after)", width=350)
+            st.download_button("Download final PNG", data=final_bytes, file_name="final_label.png", mime="image/png")
 
-            st.success("Rendered successfully.")
-        except Exception as e:
-            st.exception(e)
+        st.success("Rendered successfully.")
+    except Exception as e:
+        st.exception(e)
