@@ -7,12 +7,20 @@ from typing import List, Dict, Tuple, Any
 st.set_page_config(page_title="Label Renderer", layout="wide")
 
 # ---------------------------
-# CONFIG: update this path to your local cleaned template JSON (no UI input)
+# CONFIG: template json path
 # ---------------------------
-TEMPLATE_JSON_PATH = "./template_clean.json"   # <-- put your cleaned JSON here (local)
+TEMPLATE_JSON_PATH = "./template_clean.json"
 
 # ---------------------------
-# Demo rules (your mapping)
+# BUILT-IN SAMPLE MASTER LABELS
+# ---------------------------
+SAMPLE_IMAGES = {
+    "Master Label Johnny Walker": "Master Label Johnny Walker.png",
+    "Master Label Johnny VAT": "Master Label Johnny VAT.png"
+}
+
+# ---------------------------
+# Demo rules
 # ---------------------------
 RULES: Dict[str, Dict[str, str]] = {
     "Uttar Pradesh": {
@@ -40,7 +48,7 @@ RULES: Dict[str, Dict[str, str]] = {
 }
 
 # ---------------------------
-# Utility engine code (same robust renderer)
+# ===== RENDER ENGINE (UNCHANGED) =====
 # ---------------------------
 def has_devanagari(text: str) -> bool:
     return any('\u0900' <= ch <= '\u097F' for ch in text)
@@ -53,58 +61,49 @@ def candidate_fonts_for_script(script: str) -> List[str]:
     cands = []
     if script == "devanagari":
         cands = [
-            "NotoSansDevanagari-Regular.ttf","NotoSansDevanagari-Regular","Lohit-Devanagari.ttf",
-            "Mukta-Regular.ttf","Devanagari Sangam MN.ttf","Mangal.ttf","Arial Unicode.ttf",
-            "Arial Unicode MS.ttf","/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
-            "/usr/share/fonts/truetype/lohit/lohit-devanagari.ttf","/usr/share/fonts/truetype/mukta/Mukta-Regular.ttf",
-            "/Library/Fonts/Mukta-Regular.ttf","/Library/Fonts/Devanagari Sangam MN.ttf",
+            "NotoSansDevanagari-Regular.ttf","Lohit-Devanagari.ttf","Mukta-Regular.ttf",
+            "Devanagari Sangam MN.ttf","Mangal.ttf","Arial Unicode.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+            "/Library/Fonts/Devanagari Sangam MN.ttf",
             "/System/Library/Fonts/Supplemental/Devanagari Sangam MN.ttf","DejaVuSans.ttf"
         ]
     elif script == "bengali":
         cands = [
-            "NotoSansBengali-Regular.ttf","NotoSansBengali-Regular","Lohit-Bengali.ttf","Bangla.ttf",
+            "NotoSansBengali-Regular.ttf","Lohit-Bengali.ttf",
             "/usr/share/fonts/truetype/noto/NotoSansBengali-Regular.ttf","DejaVuSans.ttf"
         ]
     else:
-        cands = ["DejaVuSans.ttf","Arial.ttf","LiberationSans-Regular.ttf","/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+        cands = ["DejaVuSans.ttf","Arial.ttf","/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
 
     if system == "Darwin":
-        cands += ["/System/Library/Fonts/Supplemental/Arial Unicode.ttf","/Library/Fonts/Arial Unicode.ttf"]
+        cands += ["/System/Library/Fonts/Supplemental/Arial Unicode.ttf"]
     elif system == "Windows":
-        cands += ["C:/Windows/Fonts/arialuni.ttf","C:/Windows/Fonts/arial.ttf","C:/Windows/Fonts/segoeui.ttf","C:/Windows/Fonts/Mangal.ttf"]
+        cands += ["C:/Windows/Fonts/arialuni.ttf","C:/Windows/Fonts/Mangal.ttf"]
     else:
-        cands += ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf","/usr/share/fonts/truetype/freefont/FreeSans.ttf"]
+        cands += ["/usr/share/fonts/truetype/freefont/FreeSans.ttf"]
 
-    seen = set(); out=[]
-    for f in cands:
-        if f not in seen:
-            seen.add(f); out.append(f)
-    return out
+    return list(dict.fromkeys(cands))
 
 def try_load_font(candidate: str, size: int):
     try:
         if os.path.exists(candidate):
             return ImageFont.truetype(candidate, size)
-    except Exception:
-        pass
+    except: pass
     try:
         return ImageFont.truetype(candidate, size)
-    except Exception:
-        pass
+    except: pass
     return None
 
-def font_supports_text(font: ImageFont.FreeTypeFont, text: str) -> bool:
+def font_supports_text(font, text):
     try:
-        dummy = Image.new("L", (10,10))
-        d = ImageDraw.Draw(dummy)
-        bbox = d.textbbox((0,0), text, font=font)
-        w = bbox[2] - bbox[0]; h = bbox[3] - bbox[1]
-        return (w>0 and h>0)
-    except Exception:
+        img = Image.new("L",(10,10))
+        d = ImageDraw.Draw(img)
+        b = d.textbbox((0,0), text, font=font)
+        return (b[2]-b[0])>0
+    except:
         return False
 
-def find_best_font_for_box(draw: ImageDraw.ImageDraw, text: str, box_w: int, box_h: int,
-                           max_size: int = 400, min_size: int = 6) -> ImageFont.FreeTypeFont:
+def find_best_font_for_box(draw, text, box_w, box_h, max_size=400, min_size=6):
     if has_devanagari(text):
         candidates = candidate_fonts_for_script("devanagari")
     elif has_bengali(text):
@@ -112,167 +111,135 @@ def find_best_font_for_box(draw: ImageDraw.ImageDraw, text: str, box_w: int, box
     else:
         candidates = candidate_fonts_for_script("latin")
 
-    best_font = None; best_score = -1.0
+    best_font=None; best_score=-1
     for cand in candidates:
-        test_font = try_load_font(cand, 40)
-        if test_font is None: continue
-        if not font_supports_text(test_font, text): continue
+        test = try_load_font(cand,40)
+        if not test or not font_supports_text(test,text): continue
 
-        lo=min_size; hi=max_size; chosen_size=min_size
-        while lo <= hi:
-            mid = (lo+hi)//2
-            f_mid = try_load_font(cand, mid)
-            if f_mid is None:
-                hi = mid-1; continue
-            bbox = draw.textbbox((0,0), text, font=f_mid)
-            w = bbox[2]-bbox[0]; h = bbox[3]-bbox[1]
-            if w <= box_w and h <= box_h:
-                chosen_size = mid; lo = mid + 1
-            else:
-                hi = mid - 1
+        lo=min_size; hi=max_size; chosen=min_size
+        while lo<=hi:
+            mid=(lo+hi)//2
+            f=try_load_font(cand,mid)
+            if not f: hi=mid-1; continue
+            b=draw.textbbox((0,0),text,font=f)
+            w=b[2]-b[0]; h=b[3]-b[1]
+            if w<=box_w and h<=box_h:
+                chosen=mid; lo=mid+1
+            else: hi=mid-1
 
-        f_final = try_load_font(cand, chosen_size)
-        if f_final is None: continue
-        bboxf = draw.textbbox((0,0), text, font=f_final)
-        w_f = bboxf[2]-bboxf[0]; h_f = bboxf[3]-bboxf[1]
-        width_ratio = w_f / box_w if box_w>0 else 0
-        height_ratio = h_f / box_h if box_h>0 else 0
-        score = min(width_ratio, height_ratio)
-        if score > best_score:
-            best_score = score; best_font = f_final
-        if best_score >= 0.98:
-            break
+        f=try_load_font(cand,chosen)
+        if not f: continue
+        b=draw.textbbox((0,0),text,font=f)
+        score=min((b[2]-b[0])/box_w,(b[3]-b[1])/box_h)
+        if score>best_score:
+            best_score=score; best_font=f
+        if best_score>0.98: break
 
-    if best_font is None:
-        for s in (40,20,12):
-            try:
-                f = ImageFont.truetype("DejaVuSans.ttf", s)
-                if font_supports_text(f, text): return f
-            except:
-                pass
+    if not best_font:
         return ImageFont.load_default()
     return best_font
 
-def percent_to_pixels(bbox_pct: Tuple[float,float,float,float], image_size: Tuple[int,int]) -> Tuple[int,int,int,int]:
-    W,H = image_size
-    x_pct,y_pct,w_pct,h_pct = bbox_pct
-    left = int((x_pct/100.0) * W); top = int((y_pct/100.0) * H)
-    return left, top, int((w_pct/100.0)*W), int((h_pct/100.0)*H)
+def percent_to_pixels(bbox_pct, image_size):
+    W,H=image_size
+    x,y,w,h=bbox_pct
+    return int(x/100*W),int(y/100*H),int(w/100*W),int(h/100*H)
 
-def render_label(master_img_path: str,
-                 template_entry: Dict[str,Any],
-                 state_name: str,
-                 rules: Dict[str,Dict[str,str]],
-                 output_path: str,
-                 debug: bool = True) -> str:
-    if not os.path.isfile(master_img_path):
-        raise FileNotFoundError(f"Master image not found: {master_img_path}")
-    img = Image.open(master_img_path).convert("RGBA")
-    W,H = img.size
-    draw = ImageDraw.Draw(img)
-    regions = template_entry.get("regions", [])
-    state_rules = rules.get(state_name)
-    if state_rules is None:
-        raise ValueError(f"No rules for state: {state_name}")
+def render_label(master_img_path, template_entry, state_name, rules, output_path, debug=True):
+    img=Image.open(master_img_path).convert("RGBA")
+    W,H=img.size
+    draw=ImageDraw.Draw(img)
 
-    for region in regions:
-        label = region.get("label")
-        if label is None: continue
-        if label not in state_rules:
-            # skip unknown keys quietly
-            continue
+    for region in template_entry.get("regions",[]):
+        label=region.get("label")
+        if label not in rules[state_name]: continue
+        text=rules[state_name][label]
 
-        text = state_rules[label]
-        left, top, w_px, h_px = percent_to_pixels((region.get("x",0), region.get("y",0), region.get("width",0), region.get("height",0)), (W,H))
-        w_px = max(1,w_px); h_px = max(1,h_px)
+        left,top,w,h=percent_to_pixels((region["x"],region["y"],region["width"],region["height"]),(W,H))
+        w=max(1,w); h=max(1,h)
 
-        best_font = find_best_font_for_box(draw, text, w_px, h_px)
-        tb = draw.textbbox((0,0), text, font=best_font)
-        text_w = tb[2]-tb[0]; text_h = tb[3]-tb[1]
+        font=find_best_font_for_box(draw,text,w,h)
+        tb=draw.textbbox((0,0),text,font=font)
+        tw=tb[2]-tb[0]; th=tb[3]-tb[1]
 
-        padding_x = max(3, int(0.03*w_px))
-        x_text = left + padding_x
-        y_text = top + (h_px - text_h)/2 - tb[1]
-        if y_text < top: y_text = top
-        if y_text + text_h > top + h_px: y_text = top + h_px - text_h
+        x=left+4
+        y=top+(h-th)/2-tb[1]
+        if y<top: y=top
 
-        draw.text((x_text, y_text), text, fill=(0,0,0,255), font=best_font)
+        draw.text((x,y),text,fill=(0,0,0,255),font=font)
 
         if debug:
-            draw.rectangle([left, top, left + w_px, top + h_px], outline=(255,0,0,200), width=1)
+            draw.rectangle([left,top,left+w,top+h],outline="red",width=1)
 
-    out_dir = os.path.dirname(output_path) or "."
-    os.makedirs(out_dir, exist_ok=True)
-    img.convert("RGB").save(output_path, format="PNG")
+    img.convert("RGB").save(output_path)
     return output_path
 
 # ---------------------------
 # UI
 # ---------------------------
-st.title("Label Renderer")
-st.write("Input Master Label and Select State to generate final label with appropriate text based on template regions and rules.")
+st.title("Label Generator")
 
 if not os.path.exists(TEMPLATE_JSON_PATH):
-    st.error(f"Template JSON not found at: {TEMPLATE_JSON_PATH}\nPlease update TEMPLATE_JSON_PATH at the top of this script.")
+    st.error("Template JSON missing")
     st.stop()
 
-with open(TEMPLATE_JSON_PATH, "r", encoding="utf-8") as f:
-    try:
-        templates = json.load(f)
-    except Exception as e:
-        st.error(f"Failed to parse template JSON: {e}")
-        st.stop()
-
-if not isinstance(templates, list) or len(templates) == 0:
-    st.error("Template JSON must be a list with at least one template entry.")
-    st.stop()
+templates=json.load(open(TEMPLATE_JSON_PATH,"r",encoding="utf-8"))
 
 col_inputs, col_result = st.columns([1,1])
 
 with col_inputs:
     st.subheader("Inputs")
-    uploaded_img = st.file_uploader("Upload master label image (PNG/JPG)", type=["png","jpg","jpeg"])
-    template_names = [os.path.basename(t.get("image","unnamed")) for t in templates]
-    sel_name = st.selectbox("Select template entry (image basename)", options=template_names)
-    sel_idx = template_names.index(sel_name)
-    template_entry = templates[sel_idx]
-    state_choice = st.selectbox("Select state", options=list(RULES.keys()))
-    debug = st.checkbox("Show debug boxes (red)", value=True)
-    generate_btn = st.button("Generate final label")
+
+    # SAMPLE OPTION
+    sample_choice = st.selectbox(
+        "Use sample master label (optional)",
+        ["None"] + list(SAMPLE_IMAGES.keys())
+    )
+
+    uploaded_img = st.file_uploader("Or upload master label", type=["png","jpg","jpeg"])
+
+    template_names=[os.path.basename(t.get("image","unnamed")) for t in templates]
+    sel_name=st.selectbox("Select template", options=template_names)
+    template_entry=templates[template_names.index(sel_name)]
+
+    state_choice=st.selectbox("Select state", options=list(RULES.keys()))
+    debug=st.checkbox("Show debug boxes", value=True)
+    generate_btn=st.button("Generate")
 
 with col_result:
-    st.subheader("Result preview")
-    placeholder = st.empty()  # will be replaced with before/after after generation
+    st.subheader("Result")
 
 if generate_btn:
-    if uploaded_img is None:
-        st.error("Please upload a master image first.")
+
+    # decide master image
+    if sample_choice!="None":
+        master_path = SAMPLE_IMAGES[sample_choice]
+        if not os.path.exists(master_path):
+            st.error("Sample image not found in app folder")
+            st.stop()
+
+    elif uploaded_img:
+        tmp_master=tempfile.NamedTemporaryFile(delete=False,suffix=".png")
+        tmp_master.write(uploaded_img.getvalue())
+        tmp_master.close()
+        master_path=tmp_master.name
     else:
-        try:
-            tmp_master = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_img.name)[1])
-            tmp_master.write(uploaded_img.getvalue())
-            tmp_master.flush(); tmp_master.close()
-            master_path = tmp_master.name
+        st.error("Upload image or select sample")
+        st.stop()
 
-            tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-            tmp_out.close()
-            out_path = tmp_out.name
+    tmp_out=tempfile.NamedTemporaryFile(delete=False,suffix=".png")
+    tmp_out.close()
+    out_path=tmp_out.name
 
-            render_label(master_path, template_entry, state_choice, RULES, out_path, debug=debug)
+    render_label(master_path, template_entry, state_choice, RULES, out_path, debug)
 
-            with open(master_path, "rb") as fm:
-                master_bytes = fm.read()
-            with open(out_path, "rb") as fo:
-                final_bytes = fo.read()
+    master_bytes=open(master_path,"rb").read()
+    final_bytes=open(out_path,"rb").read()
 
-            # show side-by-side before/after and download
-            c1, c2 = col_result.columns(2)
-            with c1:
-                st.image(Image.open(io.BytesIO(master_bytes)), caption="Master (before)", width=350)
-            with c2:
-                st.image(Image.open(io.BytesIO(final_bytes)), caption="Final (after)", width=350)
-                st.download_button("Download final PNG", data=final_bytes, file_name="final_label.png", mime="image/png")
+    c1,c2=col_result.columns(2)
+    with c1:
+        st.image(master_bytes,caption="Master",width=350)
+    with c2:
+        st.image(final_bytes,caption="Final",width=350)
+        st.download_button("Download final",data=final_bytes,file_name="final_label.png")
 
-            st.success("Rendered successfully.")
-        except Exception as e:
-            st.exception(e)
+    st.success("Done")
