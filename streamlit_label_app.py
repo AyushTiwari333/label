@@ -1,7 +1,7 @@
 # streamlit_label_app_local_template_nohistory.py
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
-import os, platform, json, tempfile, io
+import os, platform, json, tempfile, io, shutil, subprocess
 from typing import List, Dict, Tuple, Any
 
 st.set_page_config(page_title="Label Generator", layout="wide")
@@ -71,28 +71,24 @@ def has_bengali(text: str) -> bool:
 # FONT CANDIDATES
 # ---------------------------
 def candidate_fonts_for_script(script: str) -> List[str]:
-
-    # ⭐ FIRST PRIORITY = bundled fonts
     if script == "devanagari":
         return [
-            BUNDLED_FONTS["NotoSansDevanagari-Regular.ttf"],
-            BUNDLED_FONTS["Mukta-Regular.ttf"],
+            BUNDLED_FONTS.get("NotoSansDevanagari-Regular.ttf"),
+            BUNDLED_FONTS.get("Mukta-Regular.ttf"),
             "NotoSansDevanagari-Regular.ttf",
             "Mukta-Regular.ttf",
             "Mangal.ttf",
             "DejaVuSans.ttf"
         ]
-
     elif script == "bengali":
         return [
-            BUNDLED_FONTS["NotoSansBengali-Regular.ttf"],
+            BUNDLED_FONTS.get("NotoSansBengali-Regular.ttf"),
             "NotoSansBengali-Regular.ttf",
             "DejaVuSans.ttf"
         ]
-
     else:
         return [
-            BUNDLED_FONTS["DejaVuSans.ttf"],
+            BUNDLED_FONTS.get("DejaVuSans.ttf"),
             "DejaVuSans.ttf",
             "Arial.ttf"
         ]
@@ -101,28 +97,28 @@ def candidate_fonts_for_script(script: str) -> List[str]:
 # FONT LOADER (FIXED)
 # ---------------------------
 def try_load_font(candidate: str, size: int):
-
-    # 1. direct path
+    # try path directly
     try:
-        if os.path.exists(candidate):
+        if candidate and os.path.exists(candidate):
             return ImageFont.truetype(candidate, size)
-    except:
+    except Exception:
         pass
 
-    # 2. bundled font lookup
+    # try bundled shortcut name
     try:
-        fname = os.path.basename(candidate)
-        if fname in BUNDLED_FONTS:
-            path = BUNDLED_FONTS[fname]
-            if os.path.exists(path):
-                return ImageFont.truetype(path, size)
-    except:
+        if candidate:
+            fname = os.path.basename(candidate)
+            if fname in BUNDLED_FONTS:
+                path = BUNDLED_FONTS[fname]
+                if os.path.exists(path):
+                    return ImageFont.truetype(path, size)
+    except Exception:
         pass
 
-    # 3. system font fallback
+    # try by name (system)
     try:
         return ImageFont.truetype(candidate, size)
-    except:
+    except Exception:
         pass
 
     return None
@@ -133,14 +129,13 @@ def font_supports_text(font, text):
         d = ImageDraw.Draw(img)
         b = d.textbbox((0,0), text, font=font)
         return (b[2]-b[0])>0
-    except:
+    except Exception:
         return False
 
 # ---------------------------
 # BEST FONT FIT
 # ---------------------------
 def find_best_font_for_box(draw, text, box_w, box_h, max_size=400, min_size=6):
-
     if has_devanagari(text):
         candidates = candidate_fonts_for_script("devanagari")
     elif has_bengali(text):
@@ -149,27 +144,30 @@ def find_best_font_for_box(draw, text, box_w, box_h, max_size=400, min_size=6):
         candidates = candidate_fonts_for_script("latin")
 
     best_font=None; best_score=-1
-
     for cand in candidates:
+        if not cand:
+            continue
         test = try_load_font(cand,40)
-        if not test or not font_supports_text(test,text): continue
+        if not test or not font_supports_text(test,text):
+            continue
 
         lo=min_size; hi=max_size; chosen=min_size
         while lo<=hi:
             mid=(lo+hi)//2
             f=try_load_font(cand,mid)
-            if not f: hi=mid-1; continue
+            if not f:
+                hi=mid-1; continue
             b=draw.textbbox((0,0),text,font=f)
             w=b[2]-b[0]; h=b[3]-b[1]
             if w<=box_w and h<=box_h:
                 chosen=mid; lo=mid+1
-            else: hi=mid-1
+            else:
+                hi=mid-1
 
         f=try_load_font(cand,chosen)
         if not f: continue
         b=draw.textbbox((0,0),text,font=f)
         score=min((b[2]-b[0])/box_w,(b[3]-b[1])/box_h)
-
         if score>best_score:
             best_score=score; best_font=f
         if best_score>0.98: break
@@ -186,8 +184,79 @@ def percent_to_pixels(bbox_pct, image_size):
     x,y,w,h=bbox_pct
     return int(x/100*W),int(y/100*H),int(w/100*W),int(h/100*H)
 
-def render_label(master_img_path, template_entry, state_name, rules, output_path, debug=True):
+# ---------------------------
+# VECTOR/AI => PNG conversion helper
+# ---------------------------
+def convert_to_png(input_path: str) -> str:
+    """
+    Try several methods to rasterize a vector-like file (ai/pdf/eps/svg) into a PNG.
+    Returns path to PNG on success or raises RuntimeError with guidance on failure.
+    """
+    out_png = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
 
+    # 1) Try Pillow directly (works if AI saved with PDF-compat)
+    try:
+        im = Image.open(input_path)
+        im.load()
+        im = im.convert("RGBA")
+        im.save(out_png)
+        return out_png
+    except Exception:
+        pass
+
+    # 2) Try pdf2image (poppler). Requires poppler installed and pdf2image pip package.
+    try:
+        from pdf2image import convert_from_path
+        # convert first page
+        pages = convert_from_path(input_path, dpi=300, first_page=1, last_page=1)
+        pages[0].save(out_png, "PNG")
+        return out_png
+    except Exception:
+        pass
+
+    # 3) Try wand (ImageMagick). Requires wand pip package and ImageMagick installed.
+    try:
+        from wand.image import Image as WandImage
+        with WandImage(filename=input_path, resolution=300) as wimg:
+            wimg.format = 'png'
+            wimg.save(filename=out_png)
+        return out_png
+    except Exception:
+        pass
+
+    # 4) Try ImageMagick CLI (magick or convert) via subprocess
+    for cmd in ("magick", "convert"):
+        if shutil.which(cmd):
+            # try first page explicit index if supported
+            try_cmds = [
+                [cmd, input_path + "[0]", "-density", "300", out_png],
+                [cmd, input_path, "-density", "300", out_png]
+            ]
+            for cl in try_cmds:
+                try:
+                    subprocess.run(cl, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if os.path.exists(out_png) and os.path.getsize(out_png) > 0:
+                        return out_png
+                except Exception:
+                    continue
+
+    # If all failed, raise with actionable message
+    msg = (
+        "Failed to convert vector/AI file to PNG. Possible fixes:\n"
+        " - Export/save the .ai file from Illustrator as 'PDF compatible' or export as PNG/JPG and upload that.\n"
+        " - Install system dependencies on the host: ImageMagick (magick/convert) and/or poppler utils (for pdf2image).\n"
+        " - Ensure Python packages 'wand' and/or 'pdf2image' are installed in your environment.\n\n"
+        "Local install examples (mac):\n"
+        "  brew install imagemagick poppler\n"
+        "  pip install wand pdf2image\n\n"
+        "If you cannot install system packages on the deploy target, please export to PNG locally and upload the PNG."
+    )
+    raise RuntimeError(msg)
+
+# ---------------------------
+# RENDER (UNCHANGED)
+# ---------------------------
+def render_label(master_img_path, template_entry, state_name, rules, output_path, debug=True):
     img=Image.open(master_img_path).convert("RGBA")
     W,H=img.size
     draw=ImageDraw.Draw(img)
@@ -240,7 +309,11 @@ with col_inputs:
         ["None"] + list(SAMPLE_IMAGES.keys())
     )
 
-    uploaded_img = st.file_uploader("Or upload master label", type=["png","jpg","jpeg"])
+    # allow vector types + raster types
+    uploaded_img = st.file_uploader(
+        "Or upload master label (PNG/JPG/AI/PDF/EPS/SVG)",
+        type=["png","jpg","jpeg","ai","pdf","eps","svg"]
+    )
 
     template_names=[os.path.basename(t.get("image","unnamed")) for t in templates]
     sel_name=st.selectbox("Select template", options=template_names)
@@ -254,36 +327,52 @@ with col_result:
     st.markdown("<h2 style='text-align: center'>Results</h2>", unsafe_allow_html=True)
 
 if generate_btn:
+    # decide master image
+    try:
+        if sample_choice!="None":
+            master_path = SAMPLE_IMAGES[sample_choice]
+            if not os.path.exists(master_path):
+                st.error("Sample image not found")
+                st.stop()
 
-    if sample_choice!="None":
-        master_path = SAMPLE_IMAGES[sample_choice]
-        if not os.path.exists(master_path):
-            st.error("Sample image not found")
+        elif uploaded_img:
+            # save uploaded to temp file with original suffix
+            ext = os.path.splitext(uploaded_img.name)[1].lower()
+            tmp_master = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+            tmp_master.write(uploaded_img.getvalue())
+            tmp_master.close()
+            original_path = tmp_master.name
+
+            # If vector-like, try conversion
+            if ext in [".ai", ".pdf", ".eps", ".svg"]:
+                try:
+                    master_path = convert_to_png(original_path)
+                except Exception as e:
+                    st.error(f"Conversion error: {e}")
+                    st.stop()
+            else:
+                # already raster
+                master_path = original_path
+        else:
+            st.error("Upload image or select sample")
             st.stop()
 
-    elif uploaded_img:
-        tmp_master=tempfile.NamedTemporaryFile(delete=False,suffix=".png")
-        tmp_master.write(uploaded_img.getvalue())
-        tmp_master.close()
-        master_path=tmp_master.name
-    else:
-        st.error("Upload image or select sample")
-        st.stop()
+        tmp_out=tempfile.NamedTemporaryFile(delete=False,suffix=".png")
+        tmp_out.close()
+        out_path=tmp_out.name
 
-    tmp_out=tempfile.NamedTemporaryFile(delete=False,suffix=".png")
-    tmp_out.close()
-    out_path=tmp_out.name
+        render_label(master_path, template_entry, state_choice, RULES, out_path, debug)
 
-    render_label(master_path, template_entry, state_choice, RULES, out_path, debug)
+        master_bytes=open(master_path,"rb").read()
+        final_bytes=open(out_path,"rb").read()
 
-    master_bytes=open(master_path,"rb").read()
-    final_bytes=open(out_path,"rb").read()
+        c1,c2=col_result.columns(2)
+        with c1:
+            st.image(master_bytes,caption="Master",width=350)
+        with c2:
+            st.image(final_bytes,caption="Final",width=350)
+            st.download_button("Download final",data=final_bytes,file_name="final_label.png")
 
-    c1,c2=col_result.columns(2)
-    with c1:
-        st.image(master_bytes,caption="Master",width=350)
-    with c2:
-        st.image(final_bytes,caption="Final",width=350)
-        st.download_button("Download final",data=final_bytes,file_name="final_label.png")
-
-    st.success("Done")
+        st.success("Done")
+    except Exception as e:
+        st.exception(e)
